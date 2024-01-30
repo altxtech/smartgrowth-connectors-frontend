@@ -4,13 +4,14 @@ import (
 
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
-	jwtmiddleware "github.com/auth0/go-jwt-middleware/v2"
-	"github.com/golang-jwt/jwt"
 	"strconv"
 	"fmt"
 	"errors"
 	"os"
+	jwtmiddleware "github.com/auth0/go-jwt-middleware"
+	jwt "github.com/dgrijalva/jwt-go"
 	"encoding/json"
+	"log"
 )
 
 type Connector struct {
@@ -98,13 +99,55 @@ func CreateConnector(c *gin.Context) {
 	return
 }
 
+// Jwks stores a slice of JSON Web Keys
+type Jwks struct {
+  Keys []JSONWebKeys `json:"keys"`
+}
+
+type JSONWebKeys struct {
+  Kty string   `json:"kty"`
+  Kid string   `json:"kid"`
+  Use string   `json:"use"`
+  N   string   `json:"n"`
+  E   string   `json:"e"`
+  X5c []string `json:"x5c"`
+}
 
 var jwtMiddleWare *jwtmiddleware.JWTMiddleware
 
+func validationKeyGetter(token *jwt.Token) (interface{}, error) {
+	claims := token.Claims.(jwt.MapClaims)
+	log.Printf("Token Claims: %v", claims)
+      aud := os.Getenv("AUTH0_API_AUDIENCE")
+      checkAudience := claims.VerifyAudience(aud, false)
+      if !checkAudience {
+        return token, errors.New("Invalid audience.")
+      }
+      // verify iss claim
+      iss := os.Getenv("AUTH0_DOMAIN")
+      checkIss := claims.VerifyIssuer(iss, false)
+      if !checkIss {
+        return token, errors.New("Invalid issuer.")
+      }
+      
+      cert, err := getPemCert(token)
+      if err != nil {
+        log.Fatalf("could not get cert: %+v", err)
+      }
+      
+      result, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(cert))
+      return result, nil
+}
+
 func main() {
-
 	// JWT MiddleWare setup
+	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
+		ValidationKeyGetter: validationKeyGetter,
+		SigningMethod: jwt.SigningMethodRS256,
+	})
 
+	// register our actual jwtMiddleware
+	jwtMiddleWare = jwtMiddleware
 	router := gin.Default()
 
 	// Serve frontend static files
@@ -116,15 +159,29 @@ func main() {
 		api.GET("/ping", ping)
 		
 		// Connectors
-		api.GET("/connectors", ListConnectors)
-		api.GET("/connectors/:connectorID", GetConnector)
-		api.POST("/connectors", CreateConnector)
+		api.GET("/connectors", authMiddleware(),ListConnectors)
+		api.GET("/connectors/:connectorID", authMiddleware(), GetConnector)
+		api.POST("/connectors", authMiddleware(), CreateConnector)
 	}
 
 	// Start server
 	router.Run()
 }
 
+func authMiddleware() gin.HandlerFunc {
+  return func(c *gin.Context) {
+    // Get the client secret key
+    err := jwtMiddleWare.CheckJWT(c.Writer, c.Request)
+    if err != nil {
+      // Token not found
+      fmt.Println(err)
+      c.Abort()
+      c.Writer.WriteHeader(http.StatusUnauthorized)
+      c.Writer.Write([]byte("Unauthorized"))
+      return
+    }
+  }
+}
 
 func getPemCert(token *jwt.Token) (string, error) {
   cert := ""
