@@ -4,8 +4,13 @@ import (
 
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
+	jwtmiddleware "github.com/auth0/go-jwt-middleware/v2"
+	"github.com/golang-jwt/jwt"
 	"strconv"
 	"fmt"
+	"errors"
+	"os"
+	"encoding/json"
 )
 
 type Connector struct {
@@ -17,6 +22,7 @@ type Connector struct {
 type APIErrorResponse struct {
 	Error string `json:"error"`
 }
+
 func NewAPIErrorResponse(message string) APIErrorResponse {
 	return APIErrorResponse{ message }
 }
@@ -92,8 +98,13 @@ func CreateConnector(c *gin.Context) {
 	return
 }
 
+
+var jwtMiddleWare *jwtmiddleware.JWTMiddleware
+
 func main() {
-	
+
+	// JWT MiddleWare setup
+
 	router := gin.Default()
 
 	// Serve frontend static files
@@ -112,4 +123,34 @@ func main() {
 
 	// Start server
 	router.Run()
+}
+
+
+func getPemCert(token *jwt.Token) (string, error) {
+  cert := ""
+  resp, err := http.Get(os.Getenv("AUTH0_DOMAIN") + ".well-known/jwks.json")
+  if err != nil {
+    return cert, err
+  }
+  defer resp.Body.Close()
+    
+  var jwks = Jwks{}
+  err = json.NewDecoder(resp.Body).Decode(&jwks)
+    
+  if err != nil {
+    return cert, err
+  }
+    
+  x5c := jwks.Keys[0].X5c
+  for k, v := range x5c {
+    if token.Header["kid"] == jwks.Keys[k].Kid {
+      cert = "-----BEGIN CERTIFICATE-----\n" + v + "\n-----END CERTIFICATE-----"
+    }
+  }
+    
+  if cert == "" {
+    return cert, errors.New("unable to find appropriate key.")
+  }
+    
+  return cert, nil
 }
