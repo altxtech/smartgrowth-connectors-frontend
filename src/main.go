@@ -1,29 +1,33 @@
 package main
 
 import (
-	"log"
 	"net/http"
 
-	"github.com/joho/godotenv"
+	"github.com/altxtech/smartgrowth-connectors-frontend/api"
+	"github.com/altxtech/smartgrowth-connectors-frontend/middleware"
 
-	"github.com/altxtech/smartgrowth-connectors-frontend/platform/authenticator"
-	"github.com/altxtech/smartgrowth-connectors-frontend/platform/router"
+	"log"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Failed to load the env vars: %v", err)
+		log.Fatalf("Error loading the .env file: %v", err)
 	}
 
-	auth, err := authenticator.New()
-	if err != nil {
-		log.Fatalf("Failed to initialize the authenticator: %v", err)
-	}
+	router := gin.Default()
+	
+	// API route
+	router.GET("/api/connectors", middleware.EnsureValidToken(), api.ListConnectors)
 
-	rtr := router.New(auth)
+	// Frontend
+	router.GET("/", func (c *gin.Context) {
+		c.Redirect(http.StatusSeeOther, "/app")
+	})
+	router.Static("/app", "./frontend")
 
-	log.Print("Server listening on http://localhost:8080/")
-	if err := http.ListenAndServe("0.0.0.0:8080", rtr); err != nil {
-		log.Fatalf("There was an error with the http server: %v", err)
-	}
+	log.Print("Server listening on http://localhost:8080")
+	router.Run()
 }
