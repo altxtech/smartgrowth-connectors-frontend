@@ -5,6 +5,7 @@ package login
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-contrib/sessions"
@@ -29,6 +30,8 @@ func Handler(auth *authenticator.Authenticator) gin.HandlerFunc {
 			ctx.String(http.StatusInternalServerError, err.Error())
 			return
 		}
+		fmt.Println(auth.RedirectURL)
+		fmt.Println(auth.AuthCodeURL(state))
 
 		ctx.Redirect(http.StatusTemporaryRedirect, auth.AuthCodeURL(state))
 	}

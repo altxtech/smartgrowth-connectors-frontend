@@ -47,6 +47,6 @@ func Handler(auth *authenticator.Authenticator) gin.HandlerFunc {
 		}
 
 		// Redirect to logged in page.
-		ctx.Redirect(http.StatusTemporaryRedirect, "/user")
+		ctx.Redirect(http.StatusTemporaryRedirect, "/app")
 	}
 }
